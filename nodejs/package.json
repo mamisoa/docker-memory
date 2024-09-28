@@ -1,0 +1,14 @@
+{
+  "name": "nodejs-service",
+  "version": "1.0.0",
+  "description": "Node.js service for multi-database stack with Milvus support",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mongodb": "^6.0.0",
+    "axios": "^1.7.5"
+  }
+}

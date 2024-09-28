@@ -1,0 +1,110 @@
+services:
+  vector_db:
+    image: milvusdb/milvus:latest
+    ports:
+      - "${MILVUS_PORT:-19530}:19530"
+      - "${MILVUS_METRICS_PORT:-19121}:19121"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    environment:
+      - MILVUS_HOST=vector_db
+      - MILVUS_PORT=19530
+      - ETCD_USE_EMBED=true
+      - ETCD_USE_SECURED=true
+      - ETCD_ROOT_PASSWORD=${MILVUS_ROOT_PASSWORD}
+      - COMMON_SECURITY_ENABLED=true
+      - COMMON_SECURITY_USERNAME=${MILVUS_USERNAME}
+      - COMMON_SECURITY_PASSWORD=${MILVUS_PASSWORD}
+
+  relational_db:
+    image: mariadb:latest
+    ports:
+      - "${MARIADB_PORT:-3306}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MARIADB_DATABASE}
+      - MYSQL_USER=${MARIADB_USER}
+      - MYSQL_PASSWORD=${MARIADB_PASSWORD}
+
+  nosql_db:
+    image: mongo:latest
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_ROOT_PASSWORD}
+
+  fastapi:
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+    ports:
+      - "${FASTAPI_PORT:-8001}:8000"
+      - "${FASTAPI_SSH_PORT:-2222}:22"
+    volumes:
+      - ./fastapi:/app
+    depends_on:
+      - vector_db
+      - relational_db
+      - nosql_db
+    environment:
+      - MILVUS_HOST=vector_db
+      - MILVUS_PORT=19530
+      - MILVUS_USERNAME=${MILVUS_USERNAME}
+      - MILVUS_PASSWORD=${MILVUS_PASSWORD}
+      - MARIADB_HOST=relational_db
+      - MARIADB_PORT=3306
+      - MONGODB_HOST=nosql_db
+      - MONGODB_PORT=27017
+      - SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY}
+      - DATABASE_URL=mysql://${MARIADB_USER}:${MARIADB_PASSWORD}@relational_db:3306/${MARIADB_DATABASE}
+      - MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME}:${MONGODB_ROOT_PASSWORD}@nosql_db:27017
+      - OLLAMA_URL={OLLAMA_URL}
+      - OLLAMA_PORT={OLLAMA_PORT}
+      - OLLAMA_DEFALT_MODEL={OLLAMA_DEFAULT_MODEL}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nodejs:
+    build:
+      context: ./nodejs
+      dockerfile: Dockerfile
+    ports:
+      - "${NODEJS_PORT:-3000}:3000"
+      - "${NODEJS_SSH_PORT:-2223}:22"
+    volumes:
+      - ./nodejs:/app
+      - /app/node_modules
+    depends_on:
+      - fastapi
+      - vector_db
+    environment:
+      - SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY}
+      - FASTAPI_URL=http://fastapi:${FASTAPI_PORT:-8001}
+      - MILVUS_HOST=vector_db
+      - MILVUS_PORT=19530
+      - MILVUS_USERNAME=${MILVUS_USERNAME}
+      - MILVUS_PASSWORD=${MILVUS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  milvus_data:
+  mariadb_data:
+  mongo_data:
+
+networks:
+  default:
+    name: multi_db_network

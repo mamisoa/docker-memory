@@ -1,0 +1,4 @@
+pymilvus
+mysql-connector-python
+pymongo
+numpy
